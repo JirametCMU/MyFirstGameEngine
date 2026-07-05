@@ -1,0 +1,100 @@
+# MyFirstGameEngine — C++20 game engine (CMake, SFML, Catch2, MSVC)
+
+### Build directories
+build/
+cmake-build-*/
+out/
+
+### CMake generated files (outside build/ when using in-source configs)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+Makefile
+compile_commands.json
+
+### C++ compiled artifacts
+*.o
+*.obj
+*.gch
+*.pch
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.exe
+*.out
+*.ilk
+*.map
+*.exp
+*.iobj
+*.ipdb
+*.tlog
+*.lastbuildstate
+*.recipe
+*.idb
+*.pdb
+*.dSYM/
+
+### Visual Studio / MSVC
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.suo
+*.user
+*.userosscache
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+.vs/
+[Dd]ebug/
+[Rr]elease/
+[Rr]elWithDebInfo/
+[Mm]inSizeRel/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+*.[Pp]ublish.xml
+vcpkg.applocal.log
+
+### Windows
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+### JetBrains / CLion
+.idea/
+*.iws
+*.iml
+
+### VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/
+*.vsix
+
+### Cursor (local IDE state)
+.cursor/
+
+### Runtime / test artifacts (generated locally)
+**/Assets/Config/settings.json
+test_settings.json
+*.log
