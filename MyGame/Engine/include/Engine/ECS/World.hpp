@@ -9,12 +9,20 @@
 
 namespace Engine {
 
+/**
+ * Base interface for component pools to allow type-erased destruction
+ * of entity components without knowing the component type.
+ */
 class IComponentPool {
 public:
     virtual ~IComponentPool() = default;
     virtual void EntityDestroyed(uint32_t entityIndex) = 0;
 };
 
+/**
+ * A sparse set implementation mapping an entity index to component data.
+ * Guarantees contiguous memory layout for fast iteration and cache coherence.
+ */
 template<typename T>
 class ComponentPool : public IComponentPool {
 public:
@@ -71,6 +79,13 @@ public:
     }
 };
 
+/**
+ * World — The core of the Entity-Component-System registry.
+ * 
+ * Manages the lifecycle of entities, assigns unique generational handles,
+ * and holds the component pools. Designed to avoid heap allocations
+ * in the hot loop by utilizing sparse sets and contiguous arrays.
+ */
 class World {
 public:
     World() = default;
@@ -81,11 +96,32 @@ public:
     World(World&&) noexcept = default;
     World& operator=(World&&) noexcept = default;
 
+    /**
+     * Creates a new entity. Reuses an old slot if available, bumping its generation.
+     * @return A valid Entity handle.
+     */
     Entity CreateEntity();
+
+    /**
+     * Marks an entity for deferred destruction at the end of the frame.
+     * The entity remains fully valid until FlushDeferred() is called.
+     */
     void DestroyEntity(Entity e);
+
+    /**
+     * Executes pending entity destructions. Invalidates handles and frees components.
+     * Must be called at a safe synchronization point (e.g., end of frame).
+     */
     void FlushDeferred();
+
+    /**
+     * Checks whether the given entity handle is currently alive in the world.
+     */
     bool IsValid(Entity e) const;
 
+    /**
+     * Attaches a component to the entity. Replaces the existing component if present.
+     */
     template<typename T>
     T& AddComponent(Entity e, T component) {
         if (!IsValid(e)) {
@@ -94,12 +130,18 @@ public:
         return GetPool<T>().Add(e, std::move(component));
     }
 
+    /**
+     * Retrieves a mutable pointer to the component if it exists. Returns nullptr otherwise.
+     */
     template<typename T>
     T* GetComponent(Entity e) {
         if (!IsValid(e)) return nullptr;
         return GetPool<T>().Get(e.index);
     }
 
+    /**
+     * Checks if the entity has a specific component.
+     */
     template<typename T>
     bool HasComponent(Entity e) const {
         if (!IsValid(e)) return false;
@@ -107,12 +149,22 @@ public:
         return world->GetPool<T>().Has(e.index);
     }
 
+    /**
+     * Removes the component from the entity. Does nothing if the component does not exist.
+     */
     template<typename T>
     void RemoveComponent(Entity e) {
         if (!IsValid(e)) return;
         GetPool<T>().Remove(e.index);
     }
 
+    /**
+     * Iterates over all valid entities that possess ALL of the specified component types.
+     * The first template parameter T1 drives the iteration. For optimal performance, T1
+     * should ideally be the rarest component in the set.
+     * 
+     * Callable can take (Entity, T1&, Ts&...) OR just (T1&, Ts&...).
+     */
     template<typename T1, typename... Ts, typename Callable>
     void Each(Callable&& callable) {
         auto& pool1 = GetPool<T1>();

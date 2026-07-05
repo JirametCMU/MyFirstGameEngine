@@ -8,6 +8,13 @@
 
 namespace Game {
 
+/**
+ * MovementSystem — Handles player input mapping to physical movement.
+ * 
+ * Runs during the fixed update step to ensure deterministic movement regardless 
+ * of rendering framerate. Updates the entity's current Transform2D after saving
+ * its state into PreviousTransform2D for smooth render interpolation.
+ */
 class MovementSystem : public Engine::ISystem {
 public:
     void OnFixedUpdate(Engine::World& world, float fixedDeltaTime, const Engine::SystemContext& context) override {

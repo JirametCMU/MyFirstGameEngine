@@ -13,6 +13,13 @@ namespace Engine {
     template <typename T> class ResourceManager;
     using FontManager = ResourceManager<sf::Font>;
 
+    /**
+     * SystemContext — Provides dependency injection for ECS systems.
+     * 
+     * Instead of accessing global singletons (which harms testability and 
+     * predictability), systems receive this context object every frame.
+     * It contains references to core engine services like Input and Resource Managers.
+     */
     struct SystemContext {
         const InputManager& input;
         FontManager& fonts;

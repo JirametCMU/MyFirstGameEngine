@@ -6,6 +6,7 @@ namespace Engine {
 
     SceneManager::~SceneManager()
     {
+        // Exit the active scene gracefully before tearing down the hash map
         // Exit the active scene before destroying everything
         if (m_ActiveScene != nullptr)
         {
@@ -14,6 +15,7 @@ namespace Engine {
         }
     }
 
+    // Registers a scene under a unique string name. Takes ownership of the scene.
     void SceneManager::AddScene(const std::string& name, std::unique_ptr<Scene> scene)
     {
         if (m_Scenes.contains(name))
@@ -25,6 +27,8 @@ namespace Engine {
         m_Scenes[name] = std::move(scene);
     }
 
+    // Transitions from the current scene to a new one. 
+    // Triggers OnExit() on the old scene and OnEnter() on the new scene.
     void SceneManager::SwitchTo(const std::string& name)
     {
         auto it = m_Scenes.find(name);
@@ -48,6 +52,7 @@ namespace Engine {
         m_ActiveScene->OnEnter();
     }
 
+    // Delegates variable-timestep updates to the active scene.
     void SceneManager::Update(float deltaTime)
     {
         if (m_ActiveScene)
@@ -56,6 +61,7 @@ namespace Engine {
         }
     }
 
+    // Delegates fixed-timestep updates to the active scene.
     void SceneManager::FixedUpdate(float fixedDeltaTime)
     {
         if (m_ActiveScene)
@@ -64,6 +70,7 @@ namespace Engine {
         }
     }
 
+    // Delegates rendering to the active scene.
     void SceneManager::Render(sf::RenderWindow& window, float alpha)
     {
         if (m_ActiveScene != nullptr)

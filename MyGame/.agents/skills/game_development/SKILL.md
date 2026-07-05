@@ -27,6 +27,7 @@ When working on this project, the AI must strictly adhere to the following behav
 * **Project-Scoped Documents**: Plans, specs, and reviews go inside the project folder only.
 * **No third-party ECS libraries**: Build on in-house `Engine::World` (see requirements REQ-ECS-001–002). Do not add EnTT, flecs, etc., unless the user explicitly requests it.
 * **Behavior parity**: ECS refactors must preserve fixed timestep, render interpolation (`Engine::Lerp`), input actions, and settings from JSON.
+* **No git staging or commits without permission**: Do **not** run `git add`, `git commit`, or otherwise stage/commit files unless the user explicitly asks. If intent is unclear, ask first. Editing files in the workspace is fine; only git write operations require explicit approval.
 
 ---
 

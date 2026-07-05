@@ -3,15 +3,19 @@
 
 namespace Engine {
 
+    // Applies settings and immediately configures the SFML window.
     void DisplaySyncController::Apply(sf::RenderWindow& window, const DisplaySyncSettings& settings) {
         m_Settings = settings;
         ApplyToWindow(window);
     }
 
+    // Returns the currently active display settings.
     const DisplaySyncSettings& DisplaySyncController::GetSettings() const noexcept {
         return m_Settings;
     }
 
+    // Internal helper that resolves the conflict between SFML's VSync and FPS limits.
+    // SFML requires framerate limits to be set to 0 when VSync is on.
     void DisplaySyncController::ApplyToWindow(sf::RenderWindow& window) {
         switch (m_Settings.mode) {
         case SyncMode::VSync:

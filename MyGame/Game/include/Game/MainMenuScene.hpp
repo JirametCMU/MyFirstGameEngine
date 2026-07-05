@@ -12,6 +12,13 @@
 
 namespace Game {
 
+    /**
+     * MainMenuScene — A simple title screen that transitions to gameplay.
+     *
+     * Orchestrates the ECS world for the menu state. Spawns visual text entities
+     * and relies on the SystemRunner (InputSystem, UIAnimationSystem, RenderSystem)
+     * to handle user transitions and pulsing animations.
+     */
     class MainMenuScene : public Engine::Scene {
     public:
         MainMenuScene(Engine::SceneManager& sceneManager,

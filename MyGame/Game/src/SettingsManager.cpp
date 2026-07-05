@@ -37,6 +37,8 @@ namespace Game {
         }
     }
 
+    // Loads and parses the game settings from a JSON file.
+    // If the file is missing or invalid, it returns default values and logs a warning.
     GameSettings SettingsManager::Load(const std::filesystem::path& path) {
         GameSettings settings;
         std::ifstream file(path);
@@ -107,6 +109,8 @@ namespace Game {
         return settings;
     }
 
+    // Serializes the current GameSettings back into the specified JSON file.
+    // Automatically creates parent directories if they don't exist.
     void SettingsManager::Save(const GameSettings& settings, const std::filesystem::path& path) {
         json j;
         j["display"]["syncMode"] = settings.display.syncMode == Engine::SyncMode::VSync ? "VSync" : 
@@ -141,6 +145,7 @@ namespace Game {
         }
     }
 
+    // Bridges the gap between the Game's data structs and the Engine's DisplaySyncController.
     void DisplaySettingsApplicator::Apply(const DisplaySettings& settings, sf::RenderWindow& window, Engine::DisplaySyncController& syncController) {
         Engine::DisplaySyncSettings engineSettings;
         engineSettings.mode = settings.syncMode;
@@ -148,6 +153,7 @@ namespace Game {
         syncController.Apply(window, engineSettings);
     }
 
+    // Bridges the gap between the Game's keybindings and the Engine's InputManager.
     void InputSettingsApplicator::Apply(const ControlSettings& settings, Engine::InputManager& inputManager) {
         inputManager.BindAction(Engine::GameAction::MoveUp, settings.moveUp);
         inputManager.BindAction(Engine::GameAction::MoveDown, settings.moveDown);

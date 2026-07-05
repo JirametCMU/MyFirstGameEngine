@@ -5,6 +5,7 @@
 
 namespace Engine {
 
+    // Initializes the core application, setting up the render window and default configuration.
     Application::Application(std::string name, unsigned int width, unsigned int height)
         : m_Name(std::move(name))
         , m_DesignWidth(static_cast<float>(width))
@@ -38,11 +39,14 @@ namespace Engine {
         ENGINE_INFO("[Engine] Shutdown complete.");
     }
 
+    // Flags the main window to close, terminating the engine loop gracefully.
     void Application::Close()
     {
         m_Window.close();
     }
 
+    // Computes and applies letterbox/pillarbox viewport settings based on the current window size
+    // to maintain the original aspect ratio specified by the design width and height.
     void Application::ApplyLetterbox()
     {
         sf::Vector2u windowSize = m_Window.getSize();
@@ -74,6 +78,8 @@ namespace Engine {
         m_Window.setView(m_GameView);
     }
 
+    // The primary execution loop of the Engine.
+    // Handles window events, fixed/variable timesteps, rendering, and input polling.
     void Application::Run()
     {
         // Let the game initialize (load assets, bind inputs, register scenes)

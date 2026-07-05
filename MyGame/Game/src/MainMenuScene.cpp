@@ -16,6 +16,8 @@ namespace Game {
     {
     }
 
+    // Initializes the main menu ECS world. Sets up systems (input, animation, rendering)
+    // and spawns text entities for the title and pulsing prompt.
     void MainMenuScene::OnEnter()
     {
         ENGINE_INFO("[MainMenuScene] Entered main menu.");
@@ -65,16 +67,19 @@ namespace Game {
         });
     }
 
+    // Ticks the input and UI animation systems.
     void MainMenuScene::OnUpdate(float deltaTime)
     {
         m_SystemRunner.OnUpdate(m_World, deltaTime, m_Context);
     }
 
+    // Renders the text entities to the screen.
     void MainMenuScene::OnRender(sf::RenderWindow& window, float alpha)
     {
         m_SystemRunner.OnRender(m_World, window, alpha, m_Context);
     }
 
+    // Cleans up the menu ECS world before transitioning to the gameplay scene.
     void MainMenuScene::OnExit()
     {
         ENGINE_INFO("[MainMenuScene] Exiting main menu.");

@@ -13,6 +13,12 @@
 
 namespace Game {
 
+    /**
+     * GameplayScene — The main gameplay screen.
+     *
+     * Orchestrates the ECS world for the gameplay state. Spawns the player entity
+     * and sets up the Systems (Input, Movement, Render) to drive gameplay logic.
+     */
     class GameplayScene : public Engine::Scene {
     public:
         GameplayScene(Engine::SceneManager& sceneManager,

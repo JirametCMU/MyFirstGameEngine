@@ -8,6 +8,12 @@
 
 namespace Game {
 
+/**
+ * InputSystem — Handles non-continuous, one-shot input actions.
+ * 
+ * Processes player actions like jumping, shooting, or menu confirmations.
+ * Decoupled from physical keys, it reads high-level GameActions from the Context.
+ */
 class InputSystem : public Engine::ISystem {
 public:
     void OnUpdate(Engine::World& world, float deltaTime, const Engine::SystemContext& context) override {

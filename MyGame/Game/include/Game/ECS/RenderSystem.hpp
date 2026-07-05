@@ -8,6 +8,13 @@
 
 namespace Game {
 
+/**
+ * RenderSystem — Handles drawing of visual components.
+ * 
+ * Iterates over entities with visual components and applies interpolated 
+ * transforms to bridge the gap between the fixed physics timestep and 
+ * variable display framerate. Pushes updates to the Engine's DrawablePool.
+ */
 class RenderSystem : public Engine::ISystem {
 public:
     explicit RenderSystem(Engine::DrawablePool& pool) : m_Pool(pool) {}

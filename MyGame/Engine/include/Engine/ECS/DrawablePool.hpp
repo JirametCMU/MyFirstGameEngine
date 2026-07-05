@@ -7,6 +7,14 @@
 
 namespace Engine {
 
+/**
+ * DrawablePool — Manages non-POD SFML drawable objects outside the standard ECS pools.
+ * 
+ * Standard ECS component pools require trivial copiers and dense memory layouts.
+ * SFML drawables like sf::RectangleShape and sf::Text have deep heap allocations,
+ * virtual tables, and complex constructors. By keeping them in this separate pool,
+ * we adhere to ECS purity while still associating visual elements with Entity handles.
+ */
 class DrawablePool {
 public:
     void CreateRectangle(Entity e, float width, float height) {

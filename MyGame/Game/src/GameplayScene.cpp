@@ -17,6 +17,8 @@ namespace Game {
     {
     }
 
+    // Initializes the gameplay ECS world. Sets up systems and spawns the player entity 
+    // with its required components (Transform, MoveSpeed, RectangleShapeVisual).
     void GameplayScene::OnEnter()
     {
         ENGINE_INFO("[GameplayScene] Starting game simulation...");
@@ -44,21 +46,25 @@ namespace Game {
         m_DrawablePool.CreateRectangle(player, size, size);
     }
 
+    // Ticks real-time systems (e.g., input polling) based on the variable framerate delta time.
     void GameplayScene::OnUpdate(float deltaTime)
     {
         m_SystemRunner.OnUpdate(m_World, deltaTime, m_Context);
     }
 
+    // Ticks deterministic systems (e.g., movement/physics) based on the constant fixed timestep.
     void GameplayScene::OnFixedUpdate(float fixedDeltaTime)
     {
         m_SystemRunner.OnFixedUpdate(m_World, fixedDeltaTime, m_Context);
     }
 
+    // Ticks render systems to draw the world, providing an interpolation alpha to smooth movement.
     void GameplayScene::OnRender(sf::RenderWindow& window, float alpha)
     {
         m_SystemRunner.OnRender(m_World, window, alpha, m_Context);
     }
 
+    // Cleans up the gameplay ECS world and pools before transitioning to another scene.
     void GameplayScene::OnExit()
     {
         ENGINE_INFO("[GameplayScene] Exiting gameplay.");

@@ -6,6 +6,12 @@
 
 namespace Game {
 
+/**
+ * UIAnimationSystem — Drives UI-specific animations.
+ * 
+ * Iterates over entities with PulseAnimation and TextVisual components
+ * to modulate their alpha over time using a sine wave.
+ */
 class UIAnimationSystem : public Engine::ISystem {
 public:
     void OnUpdate(Engine::World& world, float deltaTime, const Engine::SystemContext& context) override {

@@ -9,11 +9,17 @@
 namespace Game {
 
     /**
-     * MyGameApp — The top-level game application.
+     * MyGameApp — The top-level game application entry point.
      *
-     * Inherits from Engine::Application and owns the SceneManager.
-     * Sets up input action bindings, registers scenes (MainMenu, Gameplay),
-     * and delegates fixed-update and render calls to the active scene.
+     * Responsibilities (What it has to do):
+     * - Serves as the root orchestrator bridging the Engine's main loop with Game-specific logic.
+     * - Bootstraps the environment (reads settings.json, discovers fonts in Assets/Fonts).
+     * - Configures global subsystems (DisplaySyncController limits, InputManager key bindings).
+     *
+     * Current Functionality (What it does now):
+     * - Inherits from Engine::Application and drives the core loop (Update, FixedUpdate, Render).
+     * - Instantiates the SceneManager and registers high-level states (MainMenuScene, GameplayScene).
+     * - Acts as a lightweight proxy, delegating all per-frame updates directly to the active Scene.
      */
     class MyGameApp : public Engine::Application {
     public:

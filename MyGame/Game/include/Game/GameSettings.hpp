@@ -5,11 +5,13 @@
 
 namespace Game {
 
+    /** Configuration settings related to display and vsync. */
     struct DisplaySettings {
         Engine::SyncMode syncMode = Engine::SyncMode::Off;
         unsigned int fpsCap = 120;
     };
 
+    /** Keyboard bindings mapped to specific Engine::GameAction enumerations. */
     struct ControlSettings {
         sf::Keyboard::Key moveUp = sf::Keyboard::W;
         sf::Keyboard::Key moveDown = sf::Keyboard::S;
@@ -23,12 +25,14 @@ namespace Game {
         sf::Keyboard::Key toggleVSync = sf::Keyboard::V;
     };
 
+    /** Tweakable gameplay variables (e.g., speed, size, tick rate). */
     struct GameplaySettings {
         float playerSpeed = 250.0f;
         float playerSize = 60.0f;
         int fixedTimestepHz = 60;
     };
 
+    /** Root container for all serializable game configuration parameters. */
     struct GameSettings {
         DisplaySettings display;
         ControlSettings controls;

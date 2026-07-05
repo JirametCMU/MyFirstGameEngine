@@ -27,6 +27,12 @@ struct Transform2D {
     }
 };
 
+/**
+ * PreviousTransform2D — Stores the transform state from the previous fixed timestep.
+ * 
+ * Essential for rendering interpolation. During OnRender, the system reads both
+ * PreviousTransform2D and Transform2D and lerps between them based on the accumulator alpha.
+ */
 struct PreviousTransform2D : Transform2D {};
 
 [[nodiscard]] inline Transform2D Lerp(
