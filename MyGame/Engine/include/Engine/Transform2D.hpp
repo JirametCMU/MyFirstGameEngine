@@ -27,6 +27,8 @@ struct Transform2D {
     }
 };
 
+struct PreviousTransform2D : Transform2D {};
+
 [[nodiscard]] inline Transform2D Lerp(
     const Transform2D& a, const Transform2D& b, float t) noexcept
 {
@@ -41,6 +43,12 @@ struct Transform2D {
     result.scale = Engine::Math::Lerp(a.scale, b.scale, t);
     
     return result;
+}
+
+[[nodiscard]] inline Transform2D Lerp(
+    const PreviousTransform2D& a, const Transform2D& b, float t) noexcept
+{
+    return Lerp(static_cast<const Transform2D&>(a), b, t);
 }
 
 } // namespace Engine

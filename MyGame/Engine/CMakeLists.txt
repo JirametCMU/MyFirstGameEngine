@@ -9,6 +9,7 @@ target_sources(Engine
         src/SceneManager.cpp
         src/DisplaySyncController.cpp
         src/PathService.cpp
+        src/ECS/World.cpp
     PUBLIC
         include/Engine/Engine.hpp
         include/Engine/InputManager.hpp
@@ -22,6 +23,11 @@ target_sources(Engine
         include/Engine/DisplaySyncController.hpp
         include/Engine/PathService.hpp
         include/Engine/Log.hpp
+        include/Engine/Entity.hpp
+        include/Engine/ECS/World.hpp
+        include/Engine/ECS/ISystem.hpp
+        include/Engine/ECS/SystemContext.hpp
+        include/Engine/ECS/DrawablePool.hpp
 )
 
 if(WIN32)

@@ -6,6 +6,8 @@ This document defines **current** requirements, implementation guidelines, and t
 
 **Initial scan:** 2026-07-05 · **Last verified:** 2026-07-05 · Scope: full codebase (~44 source files — Engine, Game, CMake, tests)
 
+**Active initiative:** ECS architecture migration (§9) — refactor gameplay simulation from scene-owned OOP objects to a data-oriented Entity-Component-System while preserving the existing scene flow, fixed timestep, and SFML rendering pipeline.
+
 ---
 
 ## 1. Background & Problem
@@ -315,7 +317,8 @@ Implementation: [Engine/include/Engine/Math.hpp](Engine/include/Engine/Math.hpp)
 | Topic | Source |
 |-------|--------|
 | Fixed timestep render lerp | [Fix Your Timestep — Gaffer on Games](https://gafferongames.com/post/fix_your_timestep/) |
-| ECS component style | [game_development SKILL.md](.agents/skills/game_development/SKILL.md) |
+| ECS component style | [game_development SKILL.md](.agents/skills/game_development/SKILL.md) — ECS-first architecture |
+| **ECS migration (full spec)** | [§9 ECS Architecture Migration](requirements.md#9-ecs-architecture-migration) |
 | SFML transform order | position → rotation → scale on `sf::Transformable` |
 
 ---
@@ -392,6 +395,7 @@ Resolved high-impact items (REQ-WEAK-001–004, REQ-WEAK-011) are listed in §8.
 | REQ-DEBT-008 | Hardening | No sanitizers (ASan/UBSan), static analysis (clang-tidy), or hardening flags in CMake. | ❌ Not started |
 | REQ-DEBT-009 | Assets pipeline | Only Fonts README in repo; no default `settings.json` checked in (created at runtime). | ❌ Not started |
 | REQ-DEBT-010 | Documentation | Engine.hpp comments still describe hardcoded R/V shortcut keys; keys are now configurable via settings. | ❌ Not started |
+| REQ-DEBT-011 | Architecture | Gameplay uses scene-owned OOP objects; ECS migration planned in §9. | ❌ Not started |
 
 ---
 
@@ -399,6 +403,7 @@ Resolved high-impact items (REQ-WEAK-001–004, REQ-WEAK-011) are listed in §8.
 
 | Priority | IDs | Rationale |
 |----------|-----|-----------|
+| **P0** | REQ-ECS-001 – REQ-ECS-012 | ECS migration — foundation, gameplay/menu refactor, performance constraints (§9) |
 | **P1** | REQ-DEBT-001, REQ-DEBT-002, REQ-WEAK-008 | CI, Game-layer tests, unified logging |
 | **P2** | REQ-WEAK-005, REQ-WEAK-006, REQ-WEAK-009, REQ-WEAK-010, REQ-DEBT-004 | Resource manager polish, scene safety, POSIX exe-dir |
 | **P3** | REQ-WEAK-007, REQ-WEAK-012, REQ-DEBT-005, REQ-DEBT-006, REQ-DEBT-010 | Performance/input stubs, feature completion, doc drift |
@@ -415,3 +420,561 @@ Resolved high-impact items (REQ-WEAK-001–004, REQ-WEAK-011) are listed in §8.
 | REQ-WEAK-011 | Scale clamp in `Transform2D::ApplyTo` |
 | REQ-SEC-002 | Gameplay + display settings clamped on load (`fpsCap`, `playerSpeed`, `playerSize`, `fixedTimestepHz`) |
 | REQ-TRANSFORM-002 | Scale minimum enforced (optional rotation setter deferred) |
+
+---
+
+## 9. ECS Architecture Migration
+
+This section defines requirements and senior guidelines for refactoring **gameplay simulation** from scene-owned OOP objects to a **data-oriented ECS**. Scene flow (`Scene`, `SceneManager`, `Application`) remains OOP — scenes become thin orchestrators that own an `Engine::World`, register systems, and spawn entities.
+
+**Legend (this section):** ✅ Implemented · ⚠️ Partial · ❌ Not started
+
+---
+
+### 9.1 Background & Problem
+
+#### Current state
+
+⚠️ **Partial ECS readiness.** The engine already uses ECS-friendly POD data (`Engine::Transform2D`), fixed-timestep interpolation, and separated engine subsystems. Game objects are still **monolithic scene members**:
+
+| Location | OOP pattern today | ECS gap |
+|----------|-------------------|---------|
+| [GameplayScene.hpp](Game/include/Game/GameplayScene.hpp) | `sf::RectangleShape m_Player` + transform members + movement logic in scene methods | No entity handle, no component storage, no systems |
+| [MainMenuScene.hpp](Game/include/Game/MainMenuScene.hpp) | `sf::Text` members + pulse animation in scene | UI not entity-driven |
+| [SceneManager.hpp](Engine/include/Engine/SceneManager.hpp) | Scene lifecycle only | No simulation world |
+
+Logic, state, and rendering for the player live in one class. Adding enemies, bullets, or particles would duplicate patterns and hurt cache locality.
+
+#### Goal
+
+Introduce a **custom, header-friendly ECS core** in the Engine layer and migrate all **simulated game objects** (player, future enemies/projectiles, menu UI entities) into entities with POD components and stateless systems. Preserve existing behavior: movement speed, diagonal normalization, fixed-timestep physics, render interpolation, input actions, settings from JSON, and scene transitions.
+
+#### Non-goals (this migration)
+
+- Replacing `Scene` / `SceneManager` with ECS (scenes stay as state machines).
+- Replacing engine services (`InputManager`, `ResourceManager`, `DisplaySyncController`) with ECS.
+- Adding a third-party ECS library (EnTT, flecs, etc.) — build a minimal in-house registry tailored to this project.
+- 3D transforms, physics engine integration, or multithreaded system scheduling.
+- Networking or serialization of worlds.
+
+#### Target architecture
+
+```text
+Application (OOP shell — unchanged)
+└── SceneManager (OOP — unchanged)
+    └── GameplayScene / MainMenuScene (thin orchestrators)
+        └── Engine::World
+            ├── Entities (handles)
+            ├── Component storage (SoA, POD)
+            └── Systems (Movement, Render, Input, UIAnimation, …)
+                └── consume InputManager, FontManager, RenderWindow via context
+```
+
+---
+
+### 9.2 ECS Requirements
+
+Requirements are ordered by dependency. Complete each phase before starting the next unless noted.
+
+---
+
+#### REQ-ECS-001 — `Engine::Entity` handle (Critical)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | Critical |
+| **Scope** | Engine layer |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. Public type `Engine::Entity` — opaque handle (recommended: `{ uint32_t index; uint32_t generation; }`).
+2. Default-constructed handle is **invalid**; `IsValid()` or equivalent returns `false`.
+3. Handles remain valid after other entities are destroyed; stale handles fail safely (no use-after-free).
+4. `operator==` / `operator!=` for handle comparison.
+5. Header: [Engine/include/Engine/Entity.hpp](Engine/include/Engine/Entity.hpp); registered in [Engine/CMakeLists.txt](Engine/CMakeLists.txt).
+
+---
+
+#### REQ-ECS-002 — `Engine::World` registry core (Critical)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | Critical |
+| **Scope** | Engine layer |
+| **Depends on** | REQ-ECS-001 |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. `Engine::World` supports:
+   - `CreateEntity() -> Entity`
+   - `DestroyEntity(Entity)` — deferred destruction until end of frame or explicit `FlushDeferred()` (document chosen policy).
+2. Component API (templates or type-erased with code-gen — prefer **templates** for zero overhead):
+   - `AddComponent<T>(Entity, T) -> T&`
+   - `GetComponent<T>(Entity) -> T*` (nullptr if missing)
+   - `HasComponent<T>(Entity) -> bool`
+   - `RemoveComponent<T>(Entity)`
+3. Iteration API for systems:
+   - `Each<Ts...>(callable)` or `View<Ts...>()` returning contiguous ranges over matching entities.
+4. **Structure-of-Arrays (SoA):** each component type stored in its own `std::vector`, indexed by entity slot — not `std::map<Entity, T>`.
+5. No heap allocation in `Each`/`View` iteration hot path after world is populated.
+6. Headers under [Engine/include/Engine/ECS/](Engine/include/Engine/ECS/); implementation in [Engine/src/ECS/](Engine/src/ECS/) or header-only if small.
+7. Unit tests: create/destroy, add/get/remove, stale handle rejection, iteration count matches expected entities.
+
+---
+
+#### REQ-ECS-003 — Component design rules (Critical)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | Critical |
+| **Scope** | Engine + Game |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. Components are **POD structs** (trivially copyable where possible): **state only, no virtual methods, no gameplay logic**.
+2. Document and enforce maximum component size guideline (e.g. ≤ 64 bytes unless justified).
+3. **Engine components** (reusable across games):
+
+   | Component | Fields | Notes |
+   |-----------|--------|-------|
+   | `Transform2D` | existing `position`, `rotation`, `scale` | Becomes a world component; keep [Transform2D.hpp](Engine/include/Engine/Transform2D.hpp) |
+   | `PreviousTransform2D` | same layout as `Transform2D` | Snapshot for fixed-timestep render lerp |
+   | `Velocity2D` | `sf::Vector2f linear` | Optional; may derive from input each frame instead |
+
+4. **Game components** (gameplay-specific, namespace `Game::`):
+
+   | Component | Fields | Notes |
+   |-----------|--------|-------|
+   | `PlayerTag` | empty or `uint8_t pad` | Marker for player entity |
+   | `MoveSpeed` | `float unitsPerSecond` | From `GameplaySettings::playerSpeed` |
+   | `RectangleShapeVisual` | `float width`, `float height`, `sf::Color fill` | Visual params — not the SFML object |
+   | `TextVisual` | `std::string text`, `unsigned charSize`, `sf::Color fill` | For menu UI entities |
+   | `PulseAnimation` | `float timer`, `float speed`, `float minAlpha`, `float maxAlpha` | Menu prompt pulsing |
+
+5. Tag components (`PlayerTag`) have no behavior — systems query them for filtering only.
+
+---
+
+#### REQ-ECS-004 — System interface and scheduling (Critical)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | Critical |
+| **Scope** | Engine layer |
+| **Depends on** | REQ-ECS-002 |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. Abstract interface `Engine::ISystem` with:
+   - `OnFixedUpdate(World&, float fixedDeltaTime)` — deterministic simulation
+   - `OnUpdate(World&, float deltaTime)` — real-time (input edge detection, animations)
+   - `OnRender(World&, sf::RenderWindow&, float alpha)` — drawing only
+2. `Engine::SystemRunner` (or methods on `World`) registers systems in **explicit order**; order is documented and tested.
+3. Recommended default order:
+
+   | Phase | Systems | Timestep |
+   |-------|---------|----------|
+   | Real-time | `InputSystem`, `UIAnimationSystem` | `OnUpdate` |
+   | Fixed | `MovementSystem`, `ActionSystem` | `OnFixedUpdate` |
+   | Render | `RenderSystem` | `OnRender` |
+
+4. Systems are **stateless** — no entity-specific member variables; all state lives in components.
+5. External dependencies (`InputManager`, `FontManager`, `TextureManager`) passed via a **`SystemContext`** struct per frame, not stored globally.
+
+---
+
+#### REQ-ECS-005 — `MovementSystem` (High)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | High |
+| **Scope** | Game layer |
+| **Depends on** | REQ-ECS-003, REQ-ECS-004 |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. Queries entities with `Transform2D` + `PreviousTransform2D` + `MoveSpeed` + input-driven velocity (via `Velocity2D` or inline direction from context).
+2. On each fixed step:
+   - Copy `Transform2D` → `PreviousTransform2D`.
+   - Read `GameAction` held states from `SystemContext::input`.
+   - Normalize digital direction via `Engine::Math::NormalizeDigitalDirection`.
+   - Update `Transform2D.position` by `direction * MoveSpeed * fixedDeltaTime`.
+3. Behavior matches current [GameplayScene.cpp](Game/src/GameplayScene.cpp) movement exactly (cardinal + diagonal speed).
+4. Does not allocate per entity per frame.
+
+---
+
+#### REQ-ECS-006 — `RenderSystem` with drawable pool (High)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | High |
+| **Scope** | Engine + Game |
+| **Depends on** | REQ-ECS-003, REQ-ECS-004 |
+| **Status** | ❌ Not started |
+
+**Problem:** SFML drawables (`sf::RectangleShape`, `sf::Text`) are not POD and hold GPU-related state. They must **not** live inside hot-path component arrays.
+
+**Acceptance criteria**
+
+1. `Engine::DrawablePool` (or scene-local pool owned by `World`) maps `Entity` → concrete SFML drawable, created when visual components are added, destroyed with entity.
+2. `RenderSystem`:
+   - Iterates entities with `Transform2D` + a visual component (`RectangleShapeVisual` or `TextVisual`).
+   - Lerps `PreviousTransform2D` and `Transform2D` via `Engine::Lerp` using `alpha`.
+   - Applies transform to pooled drawable; calls `window.draw()`.
+3. Text entities resolve fonts through `SystemContext::fonts` (same as current menu scene).
+4. Origin setup (centered player square) happens once at entity spawn, not every frame.
+5. No `new`/`delete` per frame in render path.
+
+---
+
+#### REQ-ECS-007 — `InputSystem` / `ActionSystem` (High)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | High |
+| **Scope** | Game layer |
+| **Depends on** | REQ-ECS-004 |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. `InputSystem::OnUpdate` handles **one-shot** actions (`Jump`, `Shoot`, `Confirm`, scene transitions) via `IsActionJustPressed`.
+2. `ActionSystem` or inline handlers log or dispatch events — preserve current Jump/Shoot console log behavior until real gameplay exists.
+3. Menu **Confirm** transitions scene via callback or `SystemContext::sceneManager` — not hard-coded in Engine.
+4. Movement held-actions remain in `MovementSystem` (fixed step) or `InputSystem` writes `Velocity2D` (document single owner to avoid duplication).
+
+---
+
+#### REQ-ECS-008 — Migrate `GameplayScene` to ECS (Critical)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | Critical |
+| **File** | [GameplayScene.cpp](Game/src/GameplayScene.cpp), [GameplayScene.hpp](Game/include/Game/GameplayScene.hpp) |
+| **Depends on** | REQ-ECS-005, REQ-ECS-006, REQ-ECS-007 |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. Remove `m_Player`, `m_PreviousTransform`, `m_CurrentTransform` from `GameplayScene`.
+2. Scene owns `Engine::World m_World` and registers game systems in `OnEnter`.
+3. `OnEnter` spawns player entity with: `Transform2D`, `PreviousTransform2D`, `MoveSpeed`, `RectangleShapeVisual`, `PlayerTag`.
+4. `OnFixedUpdate` → `m_World.FixedUpdate(dt, context)`; `OnUpdate` → `m_World.Update(...)`; `OnRender` → `m_World.Render(...)`.
+5. `OnExit` destroys all entities or resets world.
+6. **Parity:** player size, color, start position, speed, interpolation smoothness unchanged vs pre-migration.
+
+---
+
+#### REQ-ECS-009 — Migrate `MainMenuScene` to ECS (High)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | High |
+| **File** | [MainMenuScene.cpp](Game/src/MainMenuScene.cpp) |
+| **Depends on** | REQ-ECS-006, REQ-ECS-007 |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. Title and prompt are separate entities with `TextVisual` + `Transform2D` (position-only; scale/rotation default).
+2. Prompt entity has `PulseAnimation`; `UIAnimationSystem` updates alpha in `OnUpdate`.
+3. Remove direct `sf::Text` members from scene class.
+4. Visual parity with current menu (fonts, colors, pulsing prompt, Enter to play).
+
+---
+
+#### REQ-ECS-010 — ECS unit tests (High)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | High |
+| **Location** | [Engine/tests/test_World.cpp](Engine/tests/test_World.cpp), [Game/tests/test_MovementSystem.cpp](Game/tests/test_MovementSystem.cpp) (or Engine if systems live there) |
+| **Status** | ❌ Not started |
+
+**Minimum test cases**
+
+| Test | Expected |
+|------|----------|
+| Create / destroy entity | Handle invalid after destroy; generation prevents reuse bugs |
+| Add / get / remove component | Pointer stability within same frame; missing component returns nullptr |
+| `Each` iteration | Visits only entities with all required components |
+| MovementSystem fixed step | Position delta matches `speed * dt` for unit direction |
+| Render lerp | Interpolated transform at `alpha=0.5` matches `Engine::Lerp` |
+| Stale handle | Operations on destroyed entity handle fail safely (no crash) |
+
+Tests must not require SFML window or GPU except where headless SFML drawables are already used (`test_Transform2D` pattern).
+
+---
+
+#### REQ-ECS-011 — Performance constraints (Critical)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | Critical |
+| **Scope** | Engine + Game |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. **No allocations** in `World::FixedUpdate`, `World::Update`, `World::Render` system loops for steady-state gameplay (after scene `OnEnter` setup).
+2. **No RTTI** (`dynamic_cast`, `typeid`) in system hot paths.
+3. **No virtual dispatch per entity** inside iteration — virtual calls allowed once per system per frame, not per entity.
+4. Component arrays remain **contiguous** (`std::vector`); avoid node-based containers (`std::list`, `std::map`) for component storage.
+5. Document cache-friendly component layout: hot fields together, avoid padding bloat; prefer `float` over `double` for 2D game.
+6. Profile baseline (Debug + Release): record frame time before/after migration with 1 player entity; document in PR — ECS must not regress Release performance.
+
+---
+
+#### REQ-ECS-012 — Remove dead OOP gameplay code (Medium)
+
+| Field | Value |
+|-------|-------|
+| **Priority** | Medium |
+| **Depends on** | REQ-ECS-008, REQ-ECS-009 |
+| **Status** | ❌ Not started |
+
+**Acceptance criteria**
+
+1. No scene class contains `sf::RectangleShape`, `sf::Text`, or per-object transform members for simulated objects.
+2. No gameplay logic (movement, pulsing, action handling) remains in scene methods except world/system delegation.
+3. Update [README.md](README.md) architecture section to describe ECS + Scene hybrid.
+
+---
+
+### 9.3 Senior Implementation Guidelines (ECS)
+
+#### 9.3.1 Hybrid model — what stays OOP vs what becomes ECS
+
+| Layer | Pattern | Examples |
+|-------|---------|----------|
+| **Shell & flow** | OOP | `Application`, `SceneManager`, `Scene` lifecycle, `SettingsManager` |
+| **Services** | OOP singletons on Application | `InputManager`, `FontManager`, `DisplaySyncController` |
+| **Simulation** | ECS | Player, enemies, bullets, menu text entities |
+| **Systems** | Stateless functors / small classes | `MovementSystem`, `RenderSystem` |
+
+Scenes answer: *which world exists, which systems run, which entities spawn*. They do **not** answer: *how does this entity move*.
+
+---
+
+#### 9.3.2 Entity handle with generation (recommended)
+
+```cpp
+namespace Engine {
+
+struct Entity {
+    uint32_t index{0};
+    uint32_t generation{0};
+
+    [[nodiscard]] bool IsValid() const noexcept {
+        return generation != 0;
+    }
+};
+
+} // namespace Engine
+```
+
+On destroy: increment slot generation, mark slot free. Reuse index only after generation bump so old handles invalidate.
+
+---
+
+#### 9.3.3 Component storage — SoA registry sketch
+
+```cpp
+// Per component type T — one pool
+template<typename T>
+struct ComponentPool {
+    std::vector<T> data;
+    std::vector<Entity> entities; // parallel, same order as data
+};
+
+// World maps type -> pool; Each<View...> merges by entity index
+```
+
+**Do**
+
+- Iterate with index-based loops: `for (size_t i = 0; i < count; ++i)`.
+- Reserve capacity in `OnEnter` when entity count is known.
+- Keep `Transform2D` and `PreviousTransform2D` in separate pools but aligned by entity index.
+
+**Do not**
+
+- Store `std::function` or `std::string` in hot components updated every frame ( `TextVisual::text` is setup-time only).
+- Store raw `Entity` pointers across frames without generation check.
+- Put SFML drawables inside component structs.
+
+---
+
+#### 9.3.4 System context — inject dependencies
+
+```cpp
+struct SystemContext {
+    const InputManager& input;
+    FontManager& fonts;
+    SceneManager* sceneManager{nullptr}; // Game-only transitions
+    sf::Vector2f designSize{0.f, 0.f};
+};
+```
+
+Pass `SystemContext` by const reference into `World::FixedUpdate/Update/Render`. Systems never reach for global singletons.
+
+---
+
+#### 9.3.5 Fixed timestep + interpolation (preserve existing model)
+
+| Step | Owner | Action |
+|------|-------|--------|
+| Fixed tick | `MovementSystem` | `previous = current;` update `Transform2D` |
+| Render frame | `RenderSystem` | `render = Lerp(previous, current, alpha);` apply to drawable |
+
+Same contract as [REQ-TRANSFORM-004](requirements.md) and Gaffer on Games fixed timestep — ECS changes **where** state lives, not **how** time is stepped.
+
+---
+
+#### 9.3.6 Drawable pool pattern (SFML bridge)
+
+```cpp
+// Spawn (OnEnter) — once per entity
+auto entity = world.CreateEntity();
+world.AddComponent<RectangleShapeVisual>(entity, { size, size, sf::Color::Cyan });
+pool.CreateRectangle(entity, size, size); // sets origin, fill from component
+
+// Render (every frame) — hot path
+pool.WithRectangle(entity, [&](sf::RectangleShape& shape) {
+    renderTransform.ApplyTo(shape);
+    window.draw(shape);
+});
+```
+
+Engine owns pool mechanics; Game owns visual component definitions.
+
+---
+
+#### 9.3.7 System ordering and single responsibility
+
+```text
+OnUpdate (real-time, once per frame)
+  1. InputSystem        — edge-triggered actions, scene switch requests
+  2. UIAnimationSystem  — pulse alpha, non-physics motion
+
+OnFixedUpdate (60 Hz or settings-driven)
+  1. MovementSystem     — position integration from held actions
+
+OnRender (every frame)
+  1. RenderSystem       — lerp + draw all visual entities
+```
+
+One system owns one concern. Do not read keyboard state inside `RenderSystem`.
+
+---
+
+#### 9.3.8 Migration sequence (recommended PR order)
+
+| PR | Scope | Outcome |
+|----|-------|---------|
+| **PR-1** | REQ-ECS-001, REQ-ECS-002, REQ-ECS-010 (core tests) | `World` usable in isolation |
+| **PR-2** | REQ-ECS-003, REQ-ECS-004, Engine components | System runner + context |
+| **PR-3** | REQ-ECS-005, REQ-ECS-006, REQ-ECS-007 | Game systems + drawable pool |
+| **PR-4** | REQ-ECS-008 | GameplayScene migrated; OOP player removed |
+| **PR-5** | REQ-ECS-009, REQ-ECS-012 | Menu migrated; docs updated |
+
+Each PR must pass all existing tests plus new ECS tests; no behavioral regression in Release build.
+
+---
+
+#### 9.3.9 Engine vs Game boundary (ECS)
+
+| Item | Layer | Namespace |
+|------|-------|-----------|
+| `Entity`, `World`, `ISystem`, `SystemRunner`, `DrawablePool` | Engine | `Engine::` |
+| `Transform2D`, `PreviousTransform2D`, `Lerp`, `ApplyTo` | Engine | `Engine::` |
+| `PlayerTag`, `MoveSpeed`, `MovementSystem`, `ActionSystem` | Game | `Game::` |
+| `TextVisual`, `PulseAnimation`, `UIAnimationSystem` | Game | `Game::` |
+
+Game links against Engine; Engine never includes Game headers.
+
+---
+
+#### 9.3.10 Naming conventions (ECS)
+
+| Item | Convention | Example |
+|------|------------|---------|
+| Component structs | `PascalCase` noun | `MoveSpeed`, `PlayerTag` |
+| Tag components | `*Tag` suffix | `PlayerTag` |
+| Systems | `PascalCase` + `System` | `MovementSystem` |
+| World methods | `PascalCase` | `CreateEntity`, `AddComponent` |
+| Component members | `camelCase` | `unitsPerSecond` |
+| Query / view types | `PascalCase` | `MovementView` |
+
+---
+
+#### 9.3.11 Performance anti-patterns to reject
+
+| Anti-pattern | Why |
+|--------------|-----|
+| `std::map<Entity, Component>` | Cache misses, heap nodes |
+| Virtual `Component` base class | Forces OOP back into data layer |
+| `dynamic_cast` per entity | RTTI cost in hot loop |
+| Spawning/destroying entities every frame | Allocation churn; use pools for bullets |
+| Giant "System" that does input + physics + render | Unmaintainable; breaks ordering |
+| Storing `shared_ptr` in components | Atomic ref-count in hot path |
+
+**Profile before micro-optimizing.** ECS enables performance; it does not guarantee it. Use Visual Studio Profiler or Tracy on **Release** builds after PR-4.
+
+---
+
+#### 9.3.12 Relationship to existing `Transform2D` work
+
+`Engine::Transform2D` remains the canonical spatial component (REQ-TRANSFORM-001–006 stay valid). Migration **moves** transform state from scene members into `World` component storage — do not rewrite lerp/apply math unless a bug is found.
+
+---
+
+### 9.4 ECS — Planned files
+
+| Action | File | Status |
+|--------|------|--------|
+| Create | [Engine/include/Engine/Entity.hpp](Engine/include/Engine/Entity.hpp) | ❌ |
+| Create | [Engine/include/Engine/ECS/World.hpp](Engine/include/Engine/ECS/World.hpp) | ❌ |
+| Create | [Engine/include/Engine/ECS/ISystem.hpp](Engine/include/Engine/ECS/ISystem.hpp) | ❌ |
+| Create | [Engine/include/Engine/ECS/SystemContext.hpp](Engine/include/Engine/ECS/SystemContext.hpp) | ❌ |
+| Create | [Engine/include/Engine/ECS/DrawablePool.hpp](Engine/include/Engine/ECS/DrawablePool.hpp) | ❌ |
+| Create | [Engine/src/ECS/World.cpp](Engine/src/ECS/World.cpp) | ❌ |
+| Create | [Engine/tests/test_World.cpp](Engine/tests/test_World.cpp) | ❌ |
+| Create | [Game/include/Game/ECS/Components.hpp](Game/include/Game/ECS/Components.hpp) | ❌ |
+| Create | [Game/include/Game/ECS/MovementSystem.hpp](Game/include/Game/ECS/MovementSystem.hpp) | ❌ |
+| Create | [Game/include/Game/ECS/RenderSystem.hpp](Game/include/Game/ECS/RenderSystem.hpp) | ❌ |
+| Create | [Game/include/Game/ECS/InputSystem.hpp](Game/include/Game/ECS/InputSystem.hpp) | ❌ |
+| Create | [Game/include/Game/ECS/UIAnimationSystem.hpp](Game/include/Game/ECS/UIAnimationSystem.hpp) | ❌ |
+| Modify | [GameplayScene.cpp](Game/src/GameplayScene.cpp) — delegate to `World` | ❌ |
+| Modify | [MainMenuScene.cpp](Game/src/MainMenuScene.cpp) — delegate to `World` | ❌ |
+| Modify | [Engine/CMakeLists.txt](Engine/CMakeLists.txt), [Game/CMakeLists.txt](Game/CMakeLists.txt) | ❌ |
+
+---
+
+### 9.5 ECS verification checklist
+
+1. **Registry:** Create 100 entities with `Transform2D`; destroy 50; recreate 50 — no crashes, stale handles rejected.
+2. **Movement parity:** Player moves at `playerSpeed` from settings; diagonal speed matches pre-ECS behavior.
+3. **Interpolation:** No jitter at 60 Hz fixed step with V-Sync off and FPS cap 120.
+4. **Input:** Jump/Shoot log once per press; Confirm switches menu → gameplay.
+5. **Menu:** Title and prompt visible; prompt pulses; fonts load from `Assets/Fonts/`.
+6. **Allocations:** Debug heap profiling shows no per-frame allocations during 60 s gameplay loop (steady state).
+7. **Tests:** All Engine + Game tests pass; new ECS tests pass in Debug and Release.
+8. **Warnings:** Builds clean under `/W4 /WX` and `-Wall -Wextra -Werror`.
+
+---
+
+### 9.6 ECS references
+
+| Topic | Source |
+|-------|--------|
+| ECS principles & agent rules | [game_development SKILL.md](.agents/skills/game_development/SKILL.md) |
+| Data-oriented design | [Data-Oriented Design — Noel Berry](https://www.dataorienteddesign.com/dodbook/) |
+| Fixed timestep + render alpha | [Fix Your Timestep — Gaffer on Games](https://gafferongames.com/post/fix_your_timestep/) |
+| Existing transform component | [Engine/include/Engine/Transform2D.hpp](Engine/include/Engine/Transform2D.hpp) |
+| Current gameplay baseline | [Game/src/GameplayScene.cpp](Game/src/GameplayScene.cpp) |

@@ -50,7 +50,7 @@ namespace Game {
             std::make_unique<MainMenuScene>(m_SceneManager, GetInput(), GetFonts(), designSize));
 
         m_SceneManager.AddScene(SceneRegistry::Name(SceneId::Gameplay),
-            std::make_unique<GameplayScene>(GetInput(), designSize, m_Settings.gameplay));
+            std::make_unique<GameplayScene>(m_SceneManager, GetInput(), GetFonts(), designSize, m_Settings.gameplay));
 
         // Start on the main menu
         m_SceneManager.SwitchTo(SceneRegistry::Name(SceneId::Menu));

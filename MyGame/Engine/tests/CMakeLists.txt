@@ -14,6 +14,7 @@ add_executable(EngineTests
     test_DisplaySyncController.cpp
     test_Math.cpp
     test_Transform2D.cpp
+    test_World.cpp
 )
 
 # Link against the Engine and Catch2

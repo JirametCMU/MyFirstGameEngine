@@ -11,6 +11,14 @@ This is a modern C++20 game engine and sandbox built using SFML. The project fea
 - **Data-Driven Configuration:** Loads speeds, display settings, and input mapping dynamically from `Assets/Config/settings.json`.
 - **Unit Tested & Production-Ready Logging:** Test coverage via Catch2 and robust, stripped-in-release logging using `spdlog`.
 
+## Architecture
+
+The project uses a hybrid **Scene + Entity-Component-System (ECS)** architecture:
+- **OOP Shell:** `Application` and `SceneManager` handle application flow, rendering windows, and transitions.
+- **Scenes as Orchestrators:** `GameplayScene` and `MainMenuScene` manage an ECS `World` and coordinate a `SystemRunner`. They do not contain game logic directly.
+- **ECS Core:** High-performance, data-oriented ECS. Entities are opaque handles. Components are POD data structures (e.g., `Transform2D`, `MoveSpeed`).
+- **Stateless Systems:** Logic runs in systems (`MovementSystem`, `RenderSystem`, `InputSystem`) that operate over contiguous arrays of components.
+
 ## Building the Project
 
 ### Prerequisites
